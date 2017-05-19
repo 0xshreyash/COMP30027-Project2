@@ -43,7 +43,7 @@ def train_svm_classifier(training_file):
     # create_ngrams(json_data, n)
     data_frame = build_dataframe(clean_json_data)
     pipeline = Pipeline([
-        ('vectorizer', CountVectorizer(analyzer='char', ngram_range=(2, 4))),
+        ('vectorizer', CountVectorizer(analyzer='char_wb', ngram_range=(1, 3))),
         ('classifier', LinearSVC())
     ])
     pipeline.fit(data_frame['text'].values, data_frame['class'].values)
@@ -54,14 +54,21 @@ def clean_data(json_data):
     clean_json_data = json_data
     html_parser = HTMLParser()
     remove_digits = str.maketrans('', '', digits)
+    remove_punctuation = re.compile('[%s]' % re.escape(punctuation))
+    remove_twitter_specific_stuff = re.compile('(@[A-Za-z0-9]+)|([^0-9A-Za-z \t])|(\w+:\/\/\S+)')
     # remove_punctutation = re.compile(punctuation())
     count = 0
+    prev_source = ""
     for obj in clean_json_data:
         obj['text'] = html_parser.unescape(obj['text'])
         obj['text'] = obj['text'].translate(remove_digits)
+        # obj['text'] = remove_punctuation.sub('', obj['text'])
+        # obj['text'] = ' '.join(remove_twitter_specific_stuff.sub(" ", obj['text']).split())
         obj['text'] = ' '.join(obj['text'].split())
-        if count == 0:
+        if prev_source != obj['src']:
+            print(obj['src'])
             print(obj['text'])
+        prev_source = obj['src']
         count += 1
 
     return clean_json_data
@@ -93,7 +100,7 @@ def create_ngrams(json_data, n):
 def svm_system():
     pipeline = train_svm_classifier("train.json")
     print("Training done!")
-    with open("dev.json") as file:
+    with open("test.json") as file:
         dev_content = file.readlines()
     json_dev_data = load_json(dev_content)
     to_predict = []
@@ -110,7 +117,7 @@ def svm_system():
             print(score[i])'''
     final_predictions = []
     for i in range(len(predictions)):
-        if max(score[i]) < 0.5:
+        if max(score[i]) < 0:
             print(max(score[i]))
             print(str(predictions[i]) + " " + str(answers[i]))
             final_predictions.append('unk')
@@ -176,5 +183,4 @@ def main():
     svm_system()
 
 main()
-
 
