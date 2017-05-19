@@ -1,6 +1,8 @@
 import json
+from html.parser import HTMLParser
 from collections import defaultdict
 from pandas import DataFrame
+from string import digits
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import Pipeline
@@ -17,21 +19,30 @@ def train_simple_classifier(training_file):
     with open(training_file) as file:
         content = file.readlines()
     json_data = load_json(content)
+    clean_json_data = clean_data(json_data)
     # create_ngrams(json_data, n)
-    data_frame = build_dataframe(json_data)
+    data_frame = build_dataframe(clean_json_data)
     pipeline = Pipeline([
-        ('vectorizer', CountVectorizer()),
+        ('vectorizer', CountVectorizer(analyzer='char', ngram_range=(1, 4))),
         ('classifier', MultinomialNB())
     ])
     pipeline.fit(data_frame['text'].values, data_frame['class'].values)
     return pipeline
 
-'''
-def vectorize_counts(data_frame):
-    count_vectorizer = CountVectorizer()
-    counts = count_vectorizer.fit_transform(data_frame['text'].values)
-    return counts
-'''
+def clean_data(json_data):
+    clean_json_data = json_data
+    html_parser = HTMLParser()
+    remove_digits = str.maketrans('', '', digits)
+    count = 0
+    for obj in clean_json_data:
+        obj['text'] = html_parser.unescape(obj['text'])
+        obj['text'] = obj['text'].translate(remove_digits)
+        obj['text'] = ' '.join(obj['text'].split())
+        if count == 0:
+            print(obj['text'])
+        count += 1
+
+    return clean_json_data
 
 def build_dataframe(json_data):
     rows = []
@@ -71,7 +82,7 @@ def main():
     predictions = pipeline.predict(to_predict)
     final_predictions = []
     for i in range(len(predictions)):
-        if max(predicted_probabilities[i]) < 0.30:
+        if max(predicted_probabilities[i]) < 0.60:
             print(max(predicted_probabilities[i]))
             print(str(predictions[i]) + " " + str(answers[i]))
             final_predictions.append('unk')
@@ -82,17 +93,18 @@ def main():
     total = 0
     unks_wrong = 0
     for i in range(len(answers)):
-        if final_predictions[i] == answers[i]:
+        if predictions[i] == answers[i]:
             count += 1
         else:
-            print("Predicted:" + str(final_predictions[i]) + " Real:" + str(answers[i]))
-            print(str(max(predicted_probabilities[i])))
-            if(answers[i] == 'unk'):
+            print("Predicted:" + str(predictions[i]) + " Real:" + str(answers[i]))
+            print(str(predicted_probabilities[i]))
+            if answers[i] == 'unk':
                 unks_wrong += 1
-        if(answers[i] == 'unk'):
-            print(str(max(predicted_probabilities[i])))
         total += 1
-    
+    '''for i in range(len(answers)):
+        if answers[i] == 'unk':
+            print(str(max(predicted_probabilities[i])))
+    '''
     print(str(count) + " " + str(total) + " "  + str(unks_wrong))
     
 main()
