@@ -1,3 +1,10 @@
+'''
+Author: Shreyash Patodia
+Student ID: 767336
+Login: spatodia
+Subject: COMP30027 Machine Learning
+Project-2 Language Identification
+'''
 import json
 import re
 from html.parser import HTMLParser
@@ -15,21 +22,20 @@ from sklearn.pipeline import FeatureUnion
 from sklearn.pipeline import Pipeline
 from fuzzywuzzy import fuzz
 from sklearn.base import BaseEstimator, TransformerMixin
-# from mlxtend import StackingClassifer
 import csv
-
 
 
 ##############################################################################################
                                   # Common #
 def load_json(content):
-
+# Loads json into an array
     json_data = []
     for line in content:
         json_data.append(json.loads(line))
     return json_data
 
 def classify_locations(clean_json_data):
+# Gets location data using geopy
     count = 0
     for obj in clean_json_data:
         if 'location' in obj:
@@ -58,6 +64,7 @@ def classify_locations(clean_json_data):
     return clean_json_data
 
 def strip_links(text):
+# Strips away links from document
     link_regex    = re.compile('((https?):((//)|(\\\\))+([\w\d:#@%/;$()~_?\+-=\\\.&](#!)?)*)', re.DOTALL)
     links         = re.findall(link_regex, text)
     for link in links:
@@ -65,6 +72,7 @@ def strip_links(text):
     return text
 
 def strip_all_entities(text):
+# Takes away hashtags and usernames
     entity_prefixes = ['@','#']
     '''for separator in punctuation:
         if separator not in entity_prefixes and separator != "'":
@@ -78,6 +86,7 @@ def strip_all_entities(text):
                 words.append(word)
     return ' '.join(words)
 
+# Used for FeatureUnion, not part of the final submission.
 class TextLocationExtractor(BaseEstimator, TransformerMixin):
     """Extract the subject & body from a usenet post in a single pass.
 
@@ -111,7 +120,7 @@ class ItemSelector(BaseEstimator, TransformerMixin):
                                 # Naive Bayes #
 
 def train_bayes_classifier(training_file):
-
+# Trains the naive bayes classifier.
     with open(training_file) as file:
         content = file.readlines()
     json_data = load_json(content)
@@ -126,30 +135,41 @@ def train_bayes_classifier(training_file):
     return pipeline
 
 def naive_bayes_system():
+    print("Running naive bayes classifer..")
+# Call this function to run the whole naive bayes system.
     pipeline = train_bayes_classifier("train.json")
-    with open("test.json") as file:
+    print("Training for naive bayes classifier done.")
+    with open("dev.json") as file:
         dev_content = file.readlines()
     json_dev_data = load_json(dev_content)
     clean_dev_data = naive_clean_data(json_dev_data)
     to_predict = []
     answers = []
+    doc_ids = []
+    num = 0
     for obj in clean_dev_data:
+        doc_ids.append("text{:04}".format(num))
         to_predict.append(obj['text'])
         answers.append(obj['lang'])
+        num = num + 1
     predicted_probabilities = pipeline.predict_proba(to_predict)
     predictions = pipeline.predict(to_predict)
     final_predictions = []
     for i in range(len(predictions)):
-        if max(predicted_probabilities[i]) < 0.50:
-            print(max(predicted_probabilities[i]))
-            print(str(predictions[i]) + " " + str(answers[i]))
+        if max(predicted_probabilities[i]) < 0.30:
+            # print(max(predicted_probabilities[i]))
+            # print(str(predictions[i]) + " " + str(answers[i]))
             final_predictions.append('unk')
         else:
             final_predictions.append(predictions[i])
-
+    
     count = 0
     total = 0
     unks_wrong = 0
+    resultFile = open("naive-dev.csv", "w")
+    resultFile.write("docid,lang\n")
+    for i in range(len(final_predictions)):
+        resultFile.write(str(doc_ids[i]) + "," + str(final_predictions[i]) + "\n")
     for i in range(len(answers)):
         if final_predictions[i] == answers[i]:
             count += 1
@@ -159,7 +179,38 @@ def naive_bayes_system():
             if answers[i] == 'unk':
                 unks_wrong += 1
         total += 1
-    print(str(count) + " " + str(total) + " "  + str(unks_wrong))
+    print("Dev data testing done! Printing stats:")
+    print("Correct: " + str(count) + " Total: " + str(total) + 
+    " Number of unks wrong: "  + str(unks_wrong))
+    print("Now running on test data..")
+    with open("project2/test.json") as file:
+        dev_content = file.readlines()
+    json_dev_data = load_json(dev_content)
+    clean_dev_data = naive_clean_data(json_dev_data)
+    to_predict = []
+    answers = []
+    doc_ids = []
+    for obj in clean_dev_data:
+        to_predict.append(obj['text'])
+        doc_ids.append(obj['id'])
+        # answers.append(obj['lang'])
+    predicted_probabilities = pipeline.predict_proba(to_predict)
+    predictions = pipeline.predict(to_predict)
+    final_predictions = []
+    for i in range(len(predictions)):
+        if max(predicted_probabilities[i]) < 0.60:
+            # print(max(predicted_probabilities[i]))
+            # print(str(predictions[i]) + " " + str(answers[i]))
+            final_predictions.append('unk')
+        else:
+            final_predictions.append(predictions[i])
+    resultFile = open("naive-test.csv", "w")
+    resultFile.write("docid,lang\n")
+    for i in range(len(final_predictions)):
+        resultFile.write(str(doc_ids[i]) + "," + str(final_predictions[i]) + "\n")
+    print("Testing data run done..")
+    print("=================End of Naive Bayes System========================")
+
 
 def naive_build_dataframe(json_data):
     rows = []
@@ -203,19 +254,17 @@ def svm_training_clean_data(json_data):
     html_parser = HTMLParser()
     remove_digits = str.maketrans('', '', digits)
     count = 0
+    prev_source = ''
     for obj in clean_json_data:
-        if obj['src'] == 'twitter':
-            # print('Before :' + obj['text'])
-            obj['text'] = obj['text'].lower()
-            obj['text'] = html_parser.unescape(obj['text'])
-            obj['text'] = obj['text'].translate(remove_digits)
-            obj['text'] = ' '.join(obj['text'].split())
-            obj['text'] = strip_links(obj['text'])
-            # obj['text'] = strip_all_entities(obj['text'])
-            # print('After :' + obj['text'])
-        else:
-            clean_json_data.remove(obj)
         count += 1
+        # print('Before :' + obj['text'])
+        obj['text'] = obj['text'].lower()
+        obj['text'] = html_parser.unescape(obj['text'])
+        obj['text'] = obj['text'].translate(remove_digits)
+        obj['text'] = ' '.join(obj['text'].split())
+        obj['text'] = strip_links(obj['text'])
+        # obj['text'] = strip_all_entities(obj['text'])
+        # print('After :' + obj['text'])
     return clean_json_data
 
 def svm_dev_clean_data(json_data):
@@ -260,14 +309,14 @@ def train_svm_classifier(training_file):
     json_data = load_json(content)
     # print("Data got")
     clean_json_data = svm_training_clean_data(json_data)
-    print(clean_json_data)
+    # print(clean_json_data)
     # clean_json_data = classify_locations(clean_json_data)
     # create_ngrams(json_data, n)
     data_frame = svm_build_dataframe(clean_json_data)
     
     pipeline = Pipeline([
        ('weighed_vectorizer', TfidfVectorizer(analyzer='char', ngram_range=(2, 4))),
-       ('classifier', LinearSVC(class_weight='balanced'))
+       ('classifier', LinearSVC(C=0.9, class_weight='balanced'))
     ])
 
     # X = build_X(data_frame)
@@ -299,40 +348,39 @@ def create_ngrams(json_data, n):
         input_languages.append(lang)
 
 def svm_system():
+    print("Now running the Support Vector Machine. This may take a while..")
     pipeline = train_svm_classifier("train.json")
-    print("Training done!")
-    with open("test.json") as file:
+    print("Training for SVM done!")
+    with open("dev.json") as file:
         dev_content = file.readlines()
     json_dev_data = load_json(dev_content)
     clean_dev_data = svm_dev_clean_data(json_dev_data)
     to_predict = []
     answers = []
     doc_ids = []
-    i = 0 
+    num = 0
     for obj in clean_dev_data:
-        doc_ids.append(obj['id'])
+        doc_ids.append("text{:04}".format(num))
         to_predict.append(obj['text'])
-        # answers.append(obj['lang'])
-        i += 1
-    print("Fine here")
+        answers.append(obj['lang'])
+        num += 1
     # predicted_probabilities = pipeline.predict_proba(to_predict)
     predictions = pipeline.predict(to_predict)
     score = pipeline.decision_function(to_predict)
-    '''for i in range(len(score)):
-        if(answers[i] == 'unk'):
-            print(score[i])'''
     final_predictions = []
     for i in range(len(predictions)):
-        if max(score[i]) < -0.30:
+        if max(score[i]) < -0.36:
             # print(max(score[i]))
             # print(str(predictions[i]) + " " + str(answers[i]))
             final_predictions.append('unk')
         else:
             final_predictions.append(predictions[i])
-    resultFile = open("output.csv", "w")
+    
+    resultFile = open("svm-dev.csv", "w")
     resultFile.write("docid,lang\n")
     for i in range(len(final_predictions)):
         resultFile.write(doc_ids[i] + "," + final_predictions[i] + "\n")
+    print("SVM on dev data done! Moving on to test data..")
     count = 0
     total = 0
     unks_wrong = 0
@@ -349,17 +397,44 @@ def svm_system():
             if answers[i] == 'unk':
                 if(max(score[i]) > max_score_unk):
                     max_score_unk = max(score[i])
-
                 unks_wrong += 1
-
         total += 1
     print(max_score_unk)
-    print(str(count) + " " + str(total) + " "  + str(unks_wrong))
-
+    print("Correct: " + str(count) + " Total: " + str(total) + " Unks wrong: "  + str(unks_wrong))
+    with open("project2/test.json") as file:
+        dev_content = file.readlines()
+    json_dev_data = load_json(dev_content)
+    clean_dev_data = svm_dev_clean_data(json_dev_data)
+    to_predict = []
+    answers = []
+    doc_ids = []
+    for obj in clean_dev_data:
+        doc_ids.append(obj['id'])
+        to_predict.append(obj['text'])
+        # answers.append(obj['lang'])
+    # predicted_probabilities = pipeline.predict_proba(to_predict)
+    predictions = pipeline.predict(to_predict)
+    score = pipeline.decision_function(to_predict)
+    final_predictions = []
+    for i in range(len(predictions)):
+        if max(score[i]) < -0.36:
+            # print(max(score[i]))
+            # print(str(predictions[i]) + " " + str(answers[i]))
+            final_predictions.append('unk')
+        else:
+            final_predictions.append(predictions[i])
+    resultFile = open("svm-test.csv", "w")
+    resultFile.write("docid,lang\n")
+    for i in range(len(final_predictions)):
+        resultFile.write(doc_ids[i] + "," + final_predictions[i] + "\n")
+    print("Predictions on testing data done!")
+    print("=================End of SVM Classifier========================")
+    
 #############################################################################################
                              # Logistic Regression #
 
 def lr_training_clean_data(json_data):
+    # Clean training data
     clean_json_data = json_data
     html_parser = HTMLParser()
     remove_digits = str.maketrans('', '', digits)
@@ -380,6 +455,7 @@ def lr_training_clean_data(json_data):
     return clean_json_data
 
 def lr_dev_clean_data(json_data):
+    # Clean development/test data 
     clean_json_data = json_data
     html_parser = HTMLParser()
     remove_digits = str.maketrans('', '', digits)
@@ -438,29 +514,28 @@ def train_lr_classifier(training_file):
     return pipeline
 
 def lr_system():
+    print("Running logistic regression system now: ")
     pipeline = train_lr_classifier("train.json")
-    print("Training done!")
-    with open("test.json") as file:
+    print("Training for LR system done..")
+    with open("dev.json") as file:
         dev_content = file.readlines()
     json_dev_data = load_json(dev_content)
     clean_dev_data = lr_dev_clean_data(json_dev_data)
     to_predict = []
     answers = []
     doc_ids = []
+    num = 0
     for obj in clean_dev_data:
-        doc_ids.append(obj['uid'])
+        doc_ids.append("text{:04}".format(num))
         to_predict.append(obj['text'])
         answers.append(obj['lang'])
-    print("Fine here")
+        num += 1
     # predicted_probabilities = pipeline.predict_proba(to_predict)
     predictions = pipeline.predict(to_predict)
     score = pipeline.decision_function(to_predict)
-    '''for i in range(len(score)):
-        if(answers[i] == 'unk'):
-            print(score[i])'''
     final_predictions = []
     for i in range(len(predictions)):
-        if max(score[i]) < 0:
+        if max(score[i]) < -1.3:
             # print(max(score[i]))
             # print(str(predictions[i]) + " " + str(answers[i]))
             final_predictions.append('unk')
@@ -471,6 +546,11 @@ def lr_system():
     total = 0
     unks_wrong = 0
     max_score_unk = -1000;
+    resultFile = open("lr-dev.csv", "w")
+    resultFile.write("docid,lang\n")
+    for i in range(len(final_predictions)):
+        resultFile.write(doc_ids[i] + "," + final_predictions[i] + "\n")
+
     for i in range(len(answers)):
         if final_predictions[i] == answers[i]:
             count += 1
@@ -483,15 +563,47 @@ def lr_system():
                     max_score_unk = max(score[i])
                 unks_wrong += 1
         total += 1
-    print(max_score_unk)
-    print(str(count) + " " + str(total) + " "  + str(unks_wrong))
+    print("Correct: " + str(count) + " Total: " + str(total) + " Unks wrong: "  + str(unks_wrong))
+    print("Working on dev data done, moving on to test data")
+    with open("project2/test.json") as file:
+        dev_content = file.readlines()
+    json_dev_data = load_json(dev_content)
+    clean_dev_data = lr_dev_clean_data(json_dev_data)
+    to_predict = []
+    answers = []
+    doc_ids = []
+    for obj in clean_dev_data:
+        doc_ids.append(obj['id'])
+        to_predict.append(obj['text'])
+        # answers.append(obj['lang'])
+    # predicted_probabilities = pipeline.predict_proba(to_predict)
+    predictions = pipeline.predict(to_predict)
+    score = pipeline.decision_function(to_predict)
+    final_predictions = []
+    for i in range(len(predictions)):
+        if max(score[i]) < -1.0:
+            # print(max(score[i]))
+            # print(str(predictions[i]) + " " + str(answers[i]))
+            final_predictions.append('unk')
+        else:
+            final_predictions.append(predictions[i])
+    resultFile = open("lr-test.csv", "w")
+    resultFile.write("docid,lang\n")
+    for i in range(len(final_predictions)):
+        resultFile.write(doc_ids[i] + "," + final_predictions[i] + "\n")
+        
+
     
 #############################################################################################
                  # Support Vector Machine and Logistic Regression #
     
 def main():
-    # lr_system()
+    # Train and test on all three systems.
+    # assumed dev.json location is the same directory as this file
+    # assumed test.json is inside a directory called project2 which
+    # is located in the current directory. 
+    naive_bayes_system()
     svm_system()
-
+    lr_system()
 main()
 
