@@ -10,10 +10,13 @@ import re
 from html.parser import HTMLParser
 from string import digits, punctuation
 import numpy as np
+import itertools
+import matplotlib.pyplot as plt
 from collections import defaultdict
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut
 from pandas import DataFrame
+
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import MultinomialNB
@@ -22,6 +25,8 @@ from sklearn.pipeline import FeatureUnion
 from sklearn.pipeline import Pipeline
 from fuzzywuzzy import fuzz
 from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.metrics import confusion_matrix
+import seaborn as sn
 import csv
 
 
@@ -375,7 +380,6 @@ def svm_system():
             final_predictions.append('unk')
         else:
             final_predictions.append(predictions[i])
-    
     resultFile = open("svm-dev.csv", "w")
     resultFile.write("docid,lang\n")
     for i in range(len(final_predictions)):
@@ -495,9 +499,9 @@ def lr_build_dataframe(json_data):
 def train_lr_classifier(training_file):
     with open(training_file) as file:
         content = file.readlines()
-    print("Going to get data")
+    # print("Going to get data")
     json_data = load_json(content)
-    print("Data got")
+    # print("Data got")
     clean_json_data = lr_training_clean_data(json_data)
     # clean_json_data = classify_locations(clean_json_data)
     # create_ngrams(json_data, n)
@@ -602,6 +606,7 @@ def main():
     # assumed dev.json location is the same directory as this file
     # assumed test.json is inside a directory called project2 which
     # is located in the current directory. 
+    # plt.ticklabel_format(useOffset=False)
     naive_bayes_system()
     svm_system()
     lr_system()
